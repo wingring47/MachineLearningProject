@@ -1,0 +1,86 @@
+---
+title: "PracMachineLearning"
+output: html_document
+Name: Lurong Pan
+---
+##Introduction
+The training dataset consists of accelerometer data and labels of participants activities. The testing dataset consists of only the accelerometer data. The objective of this project is to predict the the labels based on machine learing algrithm. 
+
+###Data Processing
+```{r}
+# download data
+library(caret)
+if(!file.exists("pml-training.csv")) {
+url1 <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+download.file(url1, "pml-training.csv")}
+if(!file.exists("pml-testing.csv")) {
+url2 <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+download.file(url2, "pml-testing.csv")}
+# read data, treat emplty strings as NA
+training <- read.csv("pml-training.csv", na.strings = c("NA",""), header=TRUE)
+testing <- read.csv("pml-testing.csv", na.strings = c("NA",""), header=TRUE)
+## Data cleaning
+# remove variables that are almost always NA
+mostNA <- sapply(training, function(x) mean(is.na(x))) > 0.95
+training <- training[, mostNA==FALSE]
+mostNA <- sapply(testing, function(x) mean(is.na(x))) > 0.95
+testing <- testing[, mostNA==FALSE]
+# remove variables with nearly zero variance
+nzv <- nearZeroVar(training)
+training <- training[, -nzv]
+testing <- testing[, -nzv]
+# remove variables that are not in the scope of predicting such as user_name,etc, the fisrt 5 variables
+training <- training[, -(1:5)]
+testing <- testing[, -(1:5)]
+# make sure the training and testing sets have the same remaining variables, except classe and problem_id
+all.equal(colnames(training), colnames(testing))
+dim(training)
+dim(testing)
+
+# split training sets into trainT for training and trainV for validation
+set.seed(43)
+Train <- createDataPartition(y=training$classe, p=0.6, list=F)
+trainT <- training[Train, ]
+trainV <- training[-Train, ]
+dim(trainV) 
+dim(trainT)
+```
+
+###Machine Learning Modeling
+#### Random Forest Model, the model is fit with trainT set and the train function uses 4-fold cross-validation to select optimal tuning parameters. The model is then applied on the validation set and out of sample error is evaluated. 
+```{r}
+library(caret)
+library(randomForest)
+# use 4-fold CV to select optimal tuning parameters
+fitControl <- trainControl(method="cv", number=4, verboseIter = FALSE)
+modelfit <- train(classe ~ ., data=trainT, method="rf", trControl=fitControl)
+modelfit$finalModel
+# use the prediction model on the validation set
+validation <- predict(modelfit, newdata=trainV)
+# evaluate the out of sample error using confusion matrix
+confusionMatrix(trainV$classe, validation)
+
+```
+The accuracy is great! Kappa : 0.9973, which indicate this model is valid and will be used in predicting out final testing set.       
+
+### Model application: Train the full training set and predict the test set. 
+
+```{r}
+
+fitControl <- trainControl(method="cv", number=4, verboseIter = FALSE)
+fit <- train(classe ~ ., data=training, method="rf", trControl=fitControl)
+fit$finalModel
+
+prediction <- predict(modelfit, newdata=testing)
+prediction <- as.character(prediction)
+#  Write the prediction into file 
+pml_write_files = function(x){
+  for(i in 1:length(x)){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+
+pml_write_files(prediction)
+
+
